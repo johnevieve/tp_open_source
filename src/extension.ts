@@ -1,26 +1,31 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { getGitUserName, setGitUserName } from './commandsGit/gitCommands';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
 	console.log('Congratulations, your extension "easyGit" is now active!');
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('easyGit.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from easyGit!');
-	});
+	const disposableTestUserName = vscode.commands.registerCommand('easyGit.testUserName', async () => {
+        try {
+            // Étape 1: Récupérer le nom actuel
+            const currentName = await getGitUserName();
+            vscode.window.showInformationMessage(`Nom Git actuel: ${currentName}`);
 
-	context.subscriptions.push(disposable);
+            // Étape 2: Changer le nom temporairement
+            await setGitUserName("test");
+            vscode.window.showInformationMessage(`Nom temporaire défini: test`);
+
+            // Pause de 3 secondes avant de revenir au nom normal
+            setTimeout(async () => {
+                await setGitUserName("Genevieve Trudel");
+                vscode.window.showInformationMessage(`Nom Git restauré: Genevieve Trudel`);
+            }, 3000);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Erreur : ${error}`);
+        }
+    });
+
+	context.subscriptions.push(disposableTestUserName);
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}
