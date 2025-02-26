@@ -1,11 +1,6 @@
 import { runGitCommand } from './gitExecutor';
 
 /**
- * GitCommands.ts
- * 
- */
-
-/**
  * Récupère le nom de l'utilisateur Git actuel
  */
 export async function getGitUserName(): Promise<string> {
