@@ -9,15 +9,28 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:easygitTree"
+  ],
   "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "easyGit.helloWorld",
-        "title": "Hello World"
-      }
-    ]
+"contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "easygit",
+          "title": "EasyGit",
+          "icon": "images/easygit-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "easygit": [
+        {
+          "id": "easygitTree",
+          "name": "Dépôt Git"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
