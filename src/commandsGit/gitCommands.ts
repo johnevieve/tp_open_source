@@ -8,6 +8,14 @@ export async function getGitUserName(): Promise<string> {
 }
 
 /**
+ * Récupère le nom de l'utilisateur Git actuel
+ */
+export async function getGitUserEmail(): Promise<string> {
+    return runGitCommand('config --global user.email', process.cwd());
+}
+
+
+/**
  * Configure le nom global de l'utilisateur Git
  */
 export async function setGitUserName(name: string): Promise<string> {
