@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { getGitUserName, setGitUserName } from './commandsGit/gitCommands';
 
 import { EasyGitWebview } from './EasyGitWebview';
 import { EasyGitTreeProvider } from './EasyGitTreeProvider';
