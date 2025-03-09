@@ -14,7 +14,6 @@ export async function getGitUserEmail(): Promise<string> {
     return runGitCommand('config --global user.email', process.cwd());
 }
 
-
 /**
  * Configure le nom global de l'utilisateur Git
  */
@@ -69,4 +68,16 @@ export async function gitCommit(repoPath: string, message: string): Promise<stri
  */
 export async function gitResetFile(repoPath: string, filePath: string): Promise<string> {
     return runGitCommand(`reset ${filePath}`, repoPath);
+}
+
+/**
+ * Vérifie si un dossier est un dépôt Git valide
+ */
+export async function isGitRepository(repoPath: string): Promise<boolean> {
+    try {
+        await runGitCommand('rev-parse --is-inside-work-tree', repoPath);
+        return true;
+    } catch (error) {
+        return false;
+    }
 }

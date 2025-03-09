@@ -20,3 +20,4 @@ export async function pullRemote(repoPath: string, remoteName: string = 'origin'
 export async function pushToRemote(repoPath: string, remoteName: string = 'origin', branch: string = 'main'): Promise<string> {
   return runGitCommand(`push ${remoteName} ${branch}`, repoPath);
 }
+ 
