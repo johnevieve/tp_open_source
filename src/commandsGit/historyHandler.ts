@@ -47,3 +47,17 @@ export async function getGitShowCommit(repoPath: string, commitHash: string): Pr
 export async function gitReset(repoPath: string, commitHash: string, hard: boolean = false): Promise<string> {
   return runGitCommand(`reset ${hard ? '--hard' : ''} ${commitHash}`, repoPath);
 }
+
+/**
+ * Récupère l'historique des commits d'une branche spécifique.
+ */
+export async function getBranchCommits(repoPath: string, branchName: string): Promise<Array<{ hash: string, author: string, date: string, message: string }>> {
+  const logFormat = '--pretty=format:"%h|%an|%ad|%s" --date=short';
+  const result = await runGitCommand(`log ${branchName} ${logFormat}`, repoPath);
+
+  return result.split('\n').map(line => {
+    const [hash, author, date, message] = line.replace(/"/g, '').split('|');
+    return { hash, author, date, message };
+  });
+}
+

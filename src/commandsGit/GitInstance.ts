@@ -3,6 +3,7 @@ import * as gitCommands from '../commandsGit/gitCommands';
 import * as branchHandler from '../commandsGit/branchHandler';
 import * as historyHandler from '../commandsGit/historyHandler';
 import * as stashHandler from '../commandsGit/stashHandler';
+import { Dirent, Dirent as fsDirent } from 'fs';
 
 class GitInstance {
   private static instance: GitInstance;
@@ -21,7 +22,6 @@ class GitInstance {
     if (!fs.existsSync(path.join(repoPath, '.git'))) {
       const possibleRepoPath = path.join(repoPath, path.basename(repoPath));
       if (fs.existsSync(path.join(possibleRepoPath, '.git'))) {
-          console.log("🔄 Correction du chemin du dépôt :", possibleRepoPath);
           repoPath = possibleRepoPath;
       }
   }
@@ -31,16 +31,7 @@ class GitInstance {
   }
 
   public static async createInstance(repoPath: string): Promise<GitInstance> {
-    const fs = require('fs');
-    const path = require('path');
-
-    if (!fs.existsSync(path.join(repoPath, '.git'))) {
-        const possibleRepoPath = path.join(repoPath, path.basename(repoPath));
-        if (fs.existsSync(path.join(possibleRepoPath, '.git'))) {
-            console.log("🔄 Correction du chemin du dépôt dans createInstance :", possibleRepoPath);
-            repoPath = possibleRepoPath;
-        }
-    }
+    repoPath = this.findGitRepoPath(repoPath);
 
     const instance = new GitInstance(repoPath);
     instance.isRepoInitialized = await instance.checkIfRepoExists();
@@ -79,26 +70,27 @@ class GitInstance {
     }
   }
 
-  public static async getInstance(repoPath: string): Promise<GitInstance> {
-    const fs = require('fs');
-    const path = require('path');
+  public static async getInstance(repoPath: string): Promise<GitInstance | null> {
+    const correctedPath = GitInstance.findGitRepoPath(repoPath);
 
-    if (!fs.existsSync(path.join(repoPath, '.git'))) {
-        const possibleRepoPath = path.join(repoPath, path.basename(repoPath));
-        if (fs.existsSync(path.join(possibleRepoPath, '.git'))) {
-            console.log("🔄 Correction du chemin du dépôt dans getInstance :", possibleRepoPath);
-            repoPath = possibleRepoPath;
-        }
+    if (!await gitCommands.isGitRepository(correctedPath)) {
+        return null;
     }
 
-    const instance = new GitInstance(repoPath);
-    instance.isRepoInitialized = await instance.checkIfRepoExists();
-    return instance;
-}
+    if (!GitInstance.instance) {
+        GitInstance.instance = new GitInstance(correctedPath);
+        await GitInstance.instance.updateAll();
+    }
+    return GitInstance.instance;
+  }
+
 
   public async updateAll(): Promise<void> {
     try {
       this.isRepoInitialized = await this.checkIfRepoExists();
+      if (!this.isRepoInitialized) {
+        return;
+      }
 
       await this.updateUserInfo();
       await this.updateRepoStatus();
@@ -150,6 +142,42 @@ class GitInstance {
       this.stashList = await stashHandler.listStash(this.repoPath);
     } catch (error) {
       console.error("Erreur lors de la mise à jour du stash :", error);
+    }
+  }
+
+  public static findGitRepoPath(basePath: string): string {
+    const fs = require('fs');
+    const path = require('path');
+
+    if (fs.existsSync(path.join(basePath, '.git'))) {
+        return basePath;
+    }
+
+    const queue = [basePath];
+    while (queue.length > 0) {
+        const currentPath = queue.shift();
+        if (!currentPath) continue;
+
+                            const subfolders = fs.readdirSync(currentPath, { withFileTypes: true })
+                                                .filter((dirent: Dirent) => dirent.isDirectory())
+                                                .map((dirent: Dirent) => path.join(currentPath, dirent.name));
+
+        for (const folder of subfolders) {
+            if (fs.existsSync(path.join(folder, '.git'))) {
+                return folder;
+            }
+            queue.push(folder);
+        }
+    }
+    return basePath;
+  }
+
+  public async getBranchCommits(branchName: string): Promise<Array<{ hash: string, author: string, date: string, message: string }>> {
+    try {
+      return await historyHandler.getBranchCommits(this.repoPath, branchName);
+    } catch (error) {
+      console.error(`⚠ Erreur lors de la récupération des commits pour la branche ${branchName}:`, error);
+      return [];
     }
   }
 

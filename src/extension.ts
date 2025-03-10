@@ -10,53 +10,44 @@ export async function activate(context: vscode.ExtensionContext) {
 
   let repoPath = vscode.workspace.rootPath || '';
   let gitInstance: GitInstance | null = null;
-  let commitButton: vscode.StatusBarItem, pushButton: vscode.StatusBarItem, pullButton: vscode.StatusBarItem;
   let easyGitTreeProvider: EasyGitTreeProvider;
+  let isGitInitialized = false;
+
+  const commitButton = createStatusBarButton("$(check) Commit", "Faire un commit", "easygit.openWebview");
+  const pushButton = createStatusBarButton("$(cloud-upload) Push", "Pousser les modifications", "easygit.executeGitAction.push");
+  const pullButton = createStatusBarButton("$(cloud-download) Pull", "Récupérer les dernières modifications", "easygit.executeGitAction.pull");
 
   async function updateGitState() {
-    if (gitInstance) {
-        repoPath = gitInstance.getRepoPath();
-    }
-
-    console.log("🔍 Vérification du dépôt Git à :", repoPath);
-    const isGitInitialized = await checkGitConnection(repoPath);
-
-    if (isGitInitialized) {
+    try {
+      isGitInitialized = await checkGitConnection(repoPath);
+      if (isGitInitialized) {
         gitInstance = await GitInstance.getInstance(repoPath);
-        repoPath = gitInstance.getRepoPath()
         if (gitInstance) {
-            await gitInstance.updateAll();
+          repoPath = gitInstance.getRepoPath();
+          await gitInstance.updateAll();
         }
-    } else {
-        console.log("❌ Aucun dépôt Git détecté !");
+      } else {
+        console.warn("❌ Aucun dépôt Git détecté !");
+        gitInstance = null;
+      }
+
+      toggleStatusBarButtons();
+      refreshPanel();
+    } catch (error) {
+      console.error("⚠ Erreur lors de la mise à jour du GitState :", error);
     }
-
-    toggleStatusBarButtons(isGitInitialized);
-    refreshPanel(isGitInitialized);
-    return isGitInitialized;
-}
-
-  function createStatusBarButtons() {
-    commitButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    commitButton.text = "$(check) Commit";
-    commitButton.tooltip = "Faire un commit";
-    commitButton.command = "easygit.openWebview";
-    context.subscriptions.push(commitButton);
-
-    pushButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-    pushButton.text = "$(cloud-upload) Push";
-    pushButton.tooltip = "Pousser les modifications";
-    pushButton.command = "easygit.executeGitAction.push";
-    context.subscriptions.push(pushButton);
-
-    pullButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 98);
-    pullButton.text = "$(cloud-download) Pull";
-    pullButton.tooltip = "Récupérer les dernières modifications";
-    pullButton.command = "easygit.executeGitAction.pull";
-    context.subscriptions.push(pullButton);
   }
 
-  function toggleStatusBarButtons(isGitInitialized: boolean) {
+  function createStatusBarButton(text: string, tooltip: string, command: string): vscode.StatusBarItem {
+    const button = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
+    button.text = text;
+    button.tooltip = tooltip;
+    button.command = command;
+    context.subscriptions.push(button);
+    return button;
+  }
+
+  function toggleStatusBarButtons() {
     if (isGitInitialized) {
       commitButton.show();
       pushButton.show();
@@ -68,50 +59,58 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
-  function refreshPanel(isGitInitialized: boolean) {
+  function refreshPanel() {
     easyGitTreeProvider = new EasyGitTreeProvider(context, isGitInitialized ? repoPath : '');
     vscode.window.registerTreeDataProvider("easygitTree", easyGitTreeProvider);
     easyGitTreeProvider.refresh();
   }
 
-  createStatusBarButtons();
-  let isGitInitialized = await updateGitState();
-  refreshPanel(isGitInitialized);
+  await updateGitState();
 
   context.subscriptions.push(
     vscode.commands.registerCommand("easygit.refreshTree", async () => {
-      isGitInitialized = await updateGitState();
-      if (!gitInstance || !isGitInitialized) {
-        vscode.window.showWarningMessage("Aucun dépôt Git détecté.");
+      if (!isGitInitialized) {
+        vscode.window.showWarningMessage("⚠ Aucun dépôt Git détecté.");
         return;
       }
       easyGitTreeProvider.refresh();
     }),
 
-    vscode.commands.registerCommand("easygit.openWebview", (section: string) => {
-      section = isGitInitialized ? "commit" : "connection";
+    vscode.commands.registerCommand("easygit.openWebview", (section: string = "home") => {
+      if (!isGitInitialized) {
+        section = "connection";
+      }
       EasyGitWebview.showWebview(context, section);
     }),
 
     vscode.commands.registerCommand("easygit.executeGitAction.push", async () => {
       if (!isGitInitialized) {
-        vscode.window.showErrorMessage("Aucun dépôt Git configuré.");
-        return;
+        return vscode.window.showErrorMessage("⚠ Aucun dépôt Git configuré.");
       }
-      await remoteHandler.pushToRemote(repoPath);
-      if (gitInstance) await gitInstance.updateAll();
-      vscode.window.showInformationMessage("Push effectué avec succès.");
+      try {
+        await remoteHandler.pushToRemote(repoPath);
+        await updateGitState();
+        vscode.window.showInformationMessage("✅ Push effectué avec succès.");
+      } catch (error) {
+        vscode.window.showErrorMessage("❌ Erreur lors du Push.");
+        console.error("⚠ Erreur Push :", error);
+      }
     }),
 
     vscode.commands.registerCommand("easygit.executeGitAction.pull", async () => {
       if (!isGitInitialized) {
-        vscode.window.showErrorMessage("Aucun dépôt Git configuré.");
-        return;
+        return vscode.window.showErrorMessage("⚠ Aucun dépôt Git configuré.");
       }
-      await remoteHandler.pullRemote(repoPath);
-      if (gitInstance) await gitInstance.updateAll();
-      vscode.window.showInformationMessage("Pull effectué avec succès.");
+      try {
+        await remoteHandler.pullRemote(repoPath);
+        await updateGitState();
+        vscode.window.showInformationMessage("✅ Pull effectué avec succès.");
+      } catch (error) {
+        vscode.window.showErrorMessage("❌ Erreur lors du Pull.");
+        console.error("⚠ Erreur Pull :", error);
+      }
     }),
+
 
     vscode.commands.registerCommand("easygit.initRepository", async () => {
       const targetPath = await vscode.window.showOpenDialog({
@@ -119,75 +118,70 @@ export async function activate(context: vscode.ExtensionContext) {
         openLabel: "Sélectionner un dossier pour initialiser Git"
       });
 
-      if (targetPath && targetPath[0]) {
+      if (targetPath?.[0]) {
         const folderPath = targetPath[0].fsPath;
         try {
           await gitCommands.initRepo(folderPath);
-          vscode.window.showInformationMessage("Dépôt Git initialisé avec succès.");
+          vscode.window.showInformationMessage("✅ Dépôt Git initialisé avec succès.");
           repoPath = folderPath;
-          isGitInitialized = await updateGitState();
-          refreshPanel(isGitInitialized);
+          await updateGitState();
         } catch (error) {
-          vscode.window.showErrorMessage("Erreur lors de l'initialisation du dépôt.");
+          vscode.window.showErrorMessage("❌ Erreur lors de l'initialisation du dépôt.");
+          console.error("⚠ Erreur Init Repo :", error);
         }
       }
     }),
 
     vscode.commands.registerCommand("easygit.cloneRepository", async () => {
       const repoUrl = await vscode.window.showInputBox({ prompt: "Entrez l'URL du dépôt à cloner" });
-      if (repoUrl) {
-          const targetPath = await vscode.window.showOpenDialog({
-              canSelectFolders: true,
-              openLabel: "Sélectionner un dossier pour cloner"
-          });
-  
-          if (targetPath && targetPath[0]) {
-              const folderPath = targetPath[0].fsPath;
-              try {
-                  vscode.window.showInformationMessage("Clonage du dépôt en cours...");
-                  console.log(`Clonage de ${repoUrl} dans ${folderPath}`);
-  
-                  await gitCommands.cloneRepo(folderPath, repoUrl);
-  
-                  console.log("📂 Vérification du chemin du dépôt après clonage...");
-                  const fs = require('fs');
-                  const path = require('path');
-                  const repoName = repoUrl.split('/').pop()?.replace('.git', '');
-                  let clonedRepoPath = path.join(folderPath, repoName);
-  
-                  // Vérifier si Git a bien créé un `.git`
-                  if (!fs.existsSync(path.join(clonedRepoPath, '.git'))) {
-                      clonedRepoPath = folderPath;
-                  }
-  
-                  repoPath = clonedRepoPath;
-                  gitInstance = await GitInstance.getInstance(repoPath);
-                  repoPath = gitInstance.getRepoPath(); // 🔄 Mise à jour après récupération
-  
-                  console.log(`✅ Dépôt cloné et détecté dans : ${repoPath}`);
-  
-                  console.log("🔄 Mise à jour de l'état Git...");
-                  isGitInitialized = await updateGitState();
-  
-                  if (isGitInitialized) {
-                      console.log("✅ Détection Git réussie !");
-                      refreshPanel(isGitInitialized);
-                  } else {
-                      console.error("❌ Échec de la détection Git !");
-                      vscode.window.showErrorMessage("Le dépôt cloné n'a pas été détecté comme un dépôt Git.");
-                  }
-  
-              } catch (error) {
-                  vscode.window.showErrorMessage("Erreur lors du clonage du dépôt.");
-                  console.error("Erreur lors du clonage:", error);
-          }
+      if (!repoUrl) return;
+
+      const targetPath = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        openLabel: "Sélectionner un dossier pour cloner"
+      });
+
+      if (!targetPath?.[0]) return;
+
+      const folderPath = targetPath[0].fsPath;
+      try {
+        vscode.window.showInformationMessage("📥 Clonage du dépôt en cours...");
+        await gitCommands.cloneRepo(folderPath, repoUrl);
+
+        const fs = require('fs');
+        const path = require('path');
+        const repoName = repoUrl.split('/').pop()?.replace('.git', '');
+        let clonedRepoPath = path.join(folderPath, repoName);
+
+        if (!fs.existsSync(path.join(clonedRepoPath, '.git'))) {
+          clonedRepoPath = folderPath;
         }
+
+        repoPath = clonedRepoPath;
+        gitInstance = await GitInstance.getInstance(repoPath);
+
+        if (gitInstance) {
+          repoPath = gitInstance.getRepoPath();
+        }
+
+        await updateGitState();
+
+        if (isGitInitialized) {
+          vscode.window.showInformationMessage("✅ Dépôt cloné avec succès !");
+        } else {
+          vscode.window.showErrorMessage("❌ Le dépôt cloné n'a pas été détecté comme un dépôt Git.");
+          console.error("⚠ Échec de la détection Git après clonage.");
+        }
+      } catch (error) {
+        vscode.window.showErrorMessage("❌ Erreur lors du clonage du dépôt.");
+        console.error("⚠ Erreur Clonage :", error);
       }
     }),
   );
 }
 
 async function checkGitConnection(repoPath: string): Promise<boolean> {
+  repoPath = GitInstance.findGitRepoPath(repoPath);
   const fs = require('fs');
   const path = require('path');
 
@@ -195,9 +189,6 @@ async function checkGitConnection(repoPath: string): Promise<boolean> {
       return await gitCommands.isGitRepository(repoPath);
   }
 
-  const possibleRepoPath = path.join(repoPath, path.basename(repoPath));
-  if (fs.existsSync(path.join(possibleRepoPath, '.git'))) {
-      return await gitCommands.isGitRepository(possibleRepoPath);
-  }
   return false;
 }
+

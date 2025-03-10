@@ -16,67 +16,132 @@ export class EasyGitWebview {
     const repoPath = vscode.workspace.rootPath || '';
 
     if (EasyGitWebview.panel) {
-      EasyGitWebview.panel.webview.html = await EasyGitWebview.getWebviewContent(section, repoPath);
-      EasyGitWebview.panel.reveal(vscode.ViewColumn.One);
+      await EasyGitWebview.updateWebview(section, repoPath);
     } else {
       EasyGitWebview.panel = vscode.window.createWebviewPanel(
         'easyGitWebview',
-        'EasyGit UI',
+        EasyGitWebview.getWebviewTitle(section),
         vscode.ViewColumn.One,
         { enableScripts: true }
       );
 
-      EasyGitWebview.panel.webview.html = await EasyGitWebview.getWebviewContent(section, repoPath);
-
-      EasyGitWebview.panel.webview.onDidReceiveMessage(async (message) => {
-        const gitInstance = GitInstance.getInstance(repoPath);
-
-        switch (message.command) {
-            case 'setGitUser':
-                await gitCommands.setGitUserName(message.name);
-                await gitCommands.setGitUserEmail(message.email);
-                await (await gitInstance).updateUserInfo();
-                vscode.window.showInformationMessage("Nom et email Git mis à jour !");
-                break;
-    
-            case 'initRepo':
-                await gitCommands.initRepo(repoPath);
-                await (await gitInstance).updateAll();
-                vscode.window.showInformationMessage("Dépôt Git initialisé !");
-                vscode.commands.executeCommand('easygit.refreshTree'); // 🔄 Rafraîchir le panneau latéral
-                EasyGitWebview.panel!.webview.html = await EasyGitWebview.getWebviewContent('connection', repoPath);
-                break;
-    
-            case 'cloneRepo':
-                if (message.url) {
-                    await gitCommands.cloneRepo(repoPath, message.url);
-                    await (await gitInstance).updateAll();
-                    vscode.window.showInformationMessage("Dépôt cloné !");
-                    vscode.commands.executeCommand('easygit.refreshTree'); // 🔄 Rafraîchir le panneau latéral
-                    EasyGitWebview.panel!.webview.html = await EasyGitWebview.getWebviewContent('connection', repoPath);
-                }
-                break;
-        }
-      });
-    
+      await EasyGitWebview.updateWebview(section, repoPath);
 
       EasyGitWebview.panel.onDidDispose(() => {
         EasyGitWebview.panel = null;
       });
+
+      EasyGitWebview.panel.webview.onDidReceiveMessage(async (message) => {
+        await EasyGitWebview.handleMessage(message, repoPath);
+      });
+    }
+  }
+
+  private static async handleMessage(message: any, repoPath: string) {
+    try {
+      const gitInstance = await GitInstance.getInstance(repoPath);
+      if (!gitInstance) {
+        vscode.window.showErrorMessage("❌ Impossible d'accéder au dépôt Git.");
+        return;
+      }
+
+      switch (message.command) {
+        case 'setGitUser':
+          await gitCommands.setGitUserName(message.name);
+          await gitCommands.setGitUserEmail(message.email);
+          await gitInstance.updateUserInfo();
+          vscode.window.showInformationMessage("✅ Nom et email Git mis à jour !");
+          break;
+
+        case 'initRepo':
+          await gitCommands.initRepo(repoPath);
+          await gitInstance.updateAll();
+          vscode.window.showInformationMessage("✅ Dépôt Git initialisé !");
+          vscode.commands.executeCommand('easygit.refreshTree');
+          await EasyGitWebview.updateWebview('connection', repoPath);
+          break;
+
+        case 'cloneRepo':
+          if (message.url) {
+            await gitCommands.cloneRepo(repoPath, message.url);
+            await gitInstance.updateAll();
+            vscode.window.showInformationMessage("✅ Dépôt cloné !");
+            vscode.commands.executeCommand('easygit.refreshTree');
+            await EasyGitWebview.updateWebview('connection', repoPath);
+          }
+          break;
+
+        default:
+          console.warn(`⚠ Commande inconnue reçue: ${message.command}`);
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage("❌ Erreur lors de l'exécution de la commande Git.");
+      console.error("⚠ Erreur Webview Message Handling:", error);
+    }
+  }
+
+  private static async updateWebview(section: string, repoPath: string) {
+    if (!EasyGitWebview.panel) return;
+
+    try {
+      EasyGitWebview.panel.title = EasyGitWebview.getWebviewTitle(section);
+      EasyGitWebview.panel.webview.html = await EasyGitWebview.getWebviewContent(section, repoPath);
+    } catch (error) {
+      console.error(`⚠ Erreur lors de la mise à jour de la Webview (${section}):`, error);
+      EasyGitWebview.panel.webview.html = `
+        <h2>Erreur</h2>
+        <p>Impossible de charger la section <b>${section}</b>. Vérifiez la console pour plus d'informations.</p>
+      `;
+    }
+  }
+
+  private static getWebviewTitle(section: string): string {
+    const titles: { [key: string]: string } = {
+      home: "Accueil",
+      connection: "Connexion",
+      branches: "Branches",
+      commit: "Commit",
+      commits: "Commits",
+      conflicts: "Conflits",
+      actions: "Actions"
+    };
+    return titles[section] || "EasyGit";
+  }
+
+  private static async getSectionContent(section: string, repoPath: string): Promise<string> {
+    try {
+      switch (section) {
+        case "home": return renderHome();
+        case "connection": return await renderConnection(repoPath);
+        case "branches": return renderBranches();
+        case "commit": return renderCommit();
+        case "commits": return renderCommits();
+        case "conflicts": return renderConflicts();
+        case "actions": return renderActions();
+        default: return `<h2>Bienvenue sur EasyGit</h2><p>Sélectionnez une section à gauche.</p>`;
+      }
+    } catch (error) {
+      console.error(`⚠ Erreur lors du rendu de la section "${section}" :`, error);
+      return `
+        <h2>Erreur</h2>
+        <p>Impossible de charger la section <b>${section}</b>. Vérifiez la console pour plus d'informations.</p>
+      `;
     }
   }
 
   private static async getWebviewContent(section: string, repoPath: string): Promise<string> {
-    let content = await EasyGitWebview.getSectionContent(section, repoPath);
+    const content = await EasyGitWebview.getSectionContent(section, repoPath);
     return `
       <!DOCTYPE html>
       <html lang="fr">
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>EasyGit UI</title>
+        <title>${EasyGitWebview.getWebviewTitle(section)}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 20px; }
+          .container { max-width: 800px; margin: auto; }
+          .error { color: red; font-weight: bold; }
         </style>
       </head>
       <body>
@@ -87,18 +152,4 @@ export class EasyGitWebview {
       </html>
     `;
   }
-
-  private static async getSectionContent(section: string, repoPath: string): Promise<string> {
-    switch (section) {
-      case "home": return renderHome();
-      case "connection": return await renderConnection(repoPath);
-      case "branches": return renderBranches();
-      case "commit": return renderCommit();
-      case "commits": return renderCommits();
-      case "conflicts": return renderConflicts();
-      case "actions": return renderActions();
-      default: return `<h2>Bienvenue sur EasyGit</h2><p>Sélectionnez une section à gauche.</p>`;
-    }
-  }
 }
-
