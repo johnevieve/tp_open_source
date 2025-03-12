@@ -31,7 +31,7 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
       return [
         new GitItem("Accueil", "home", "home", "Vue d'accueil", "easygit.openWebview", "home"),
         new GitItem("Connexion & Dépôt", "account", "connection", "Configurer Git", "easygit.openWebview", "connection"),
-        new GitItem("Branches & Commits", "source-control", "branches_root", "Gérer les branches et commits", undefined, undefined, vscode.TreeItemCollapsibleState.Collapsed),
+        new GitItem("Branches & Commits", "source-control", "branches_root", "Gérer les branches et commits", "easygit.openWebview", "branches", vscode.TreeItemCollapsibleState.Collapsed),
       ];
     }
 
@@ -68,7 +68,7 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
           `branch_${branch.name}`,
           `Ouvrir la branche ${branch.name}`,
           "easygit.openWebview",
-          "branches",
+          JSON.stringify({ section: "commits", branch: branch.name }),
           vscode.TreeItemCollapsibleState.Collapsed
         )
       );
@@ -84,7 +84,7 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
       if (!gitInstance) return [];
 
       const commits = await gitInstance.getBranchCommits(branchName);
-      const localCommits = await gitInstance.getCommitHistory(); // Commits locaux non poussés
+      const localCommits = await gitInstance.getCommitHistory();
 
       return commits.map(commit => {
         const isLocal = localCommits.some(localCommit => localCommit.hash === commit.hash);
@@ -94,7 +94,7 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
           `commit_${commit.hash}`,
           `Voir le commit ${commit.hash}`,
           "easygit.openWebview",
-          commit.hash
+          JSON.stringify({ section: "commit", commit: commit.hash }),
         );
       });
     } catch (error) {

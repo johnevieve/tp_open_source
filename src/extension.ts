@@ -76,11 +76,26 @@ export async function activate(context: vscode.ExtensionContext) {
       easyGitTreeProvider.refresh();
     }),
 
-    vscode.commands.registerCommand("easygit.openWebview", (section: string = "home") => {
+    vscode.commands.registerCommand("easygit.openWebview", (args: any) => {
+      let section: string = "";
+      let extraData: any = {};
+    
+      if (typeof args === "string") {
+        try {
+          extraData = JSON.parse(args);
+          section = extraData.section;
+        } catch (error) {
+          section = args;
+        }
+      } else if (typeof args === "object") {
+        section = args.section;
+        extraData = args;
+      }
+
       if (!isGitInitialized) {
         section = "connection";
       }
-      EasyGitWebview.showWebview(context, section);
+      EasyGitWebview.showWebview(context, section, extraData);
     }),
 
     vscode.commands.registerCommand("easygit.executeGitAction.push", async () => {
