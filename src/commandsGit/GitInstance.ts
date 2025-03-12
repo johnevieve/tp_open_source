@@ -42,6 +42,7 @@ class GitInstance {
   }
 
   private async checkIfRepoExists(): Promise<boolean> {
+    
     return await gitCommands.isGitRepository(this.repoPath);
   }
 
@@ -160,10 +161,9 @@ class GitInstance {
     while (queue.length > 0) {
         const currentPath = queue.shift();
         if (!currentPath) continue;
-
-                            const subfolders = fs.readdirSync(currentPath, { withFileTypes: true })
-                                                .filter((dirent: Dirent) => dirent.isDirectory())
-                                                .map((dirent: Dirent) => path.join(currentPath, dirent.name));
+            const subfolders = fs.readdirSync(currentPath, { withFileTypes: true })
+              .filter((dirent: Dirent) => dirent.isDirectory())
+              .map((dirent: Dirent) => path.join(currentPath, dirent.name));
 
         for (const folder of subfolders) {
             if (fs.existsSync(path.join(folder, '.git'))) {

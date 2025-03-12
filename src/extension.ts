@@ -91,6 +91,8 @@ export async function activate(context: vscode.ExtensionContext) {
         await remoteHandler.pushToRemote(repoPath);
         await updateGitState();
         vscode.window.showInformationMessage("✅ Push effectué avec succès.");
+       easyGitTreeProvider.refresh();
+
       } catch (error) {
         vscode.window.showErrorMessage("❌ Erreur lors du Push.");
         console.error("⚠ Erreur Push :", error);

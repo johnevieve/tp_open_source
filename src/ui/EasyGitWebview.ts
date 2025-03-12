@@ -14,6 +14,7 @@ export class EasyGitWebview {
 
   public static async showWebview(context: vscode.ExtensionContext, section: string) {
     const repoPath = vscode.workspace.rootPath || '';
+    vscode.commands.executeCommand('easygit.refreshTree');
 
     if (EasyGitWebview.panel) {
       await EasyGitWebview.updateWebview(section, repoPath);
@@ -26,7 +27,6 @@ export class EasyGitWebview {
       );
 
       await EasyGitWebview.updateWebview(section, repoPath);
-
       EasyGitWebview.panel.onDidDispose(() => {
         EasyGitWebview.panel = null;
       });
@@ -82,6 +82,7 @@ export class EasyGitWebview {
 
   private static async updateWebview(section: string, repoPath: string) {
     if (!EasyGitWebview.panel) return;
+    vscode.commands.executeCommand('easygit.refreshTree');
 
     try {
       EasyGitWebview.panel.title = EasyGitWebview.getWebviewTitle(section);
