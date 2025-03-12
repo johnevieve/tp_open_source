@@ -8,6 +8,12 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
 
   constructor(private context: vscode.ExtensionContext, repoPath: string) {
     this.repoPath = repoPath;
+
+    GitInstance.getInstance(repoPath).then(gitInstance => {
+      if (gitInstance) {
+        gitInstance.onDidChangeData(() => this._onDidChangeTreeData.fire());
+      }
+    });
   }
 
   refresh(): void {
@@ -24,9 +30,8 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
     if (!element) {
       return [
         new GitItem("Accueil", "home", "home", "Vue d'accueil", "easygit.openWebview", "home"),
-        new GitItem("Connexion & Dépôt", "account", "connection", "Configurer Git", "easygit.openWebview", "connection"), 
+        new GitItem("Connexion & Dépôt", "account", "connection", "Configurer Git", "easygit.openWebview", "connection"),
         new GitItem("Branches & Commits", "source-control", "branches_root", "Gérer les branches et commits", undefined, undefined, vscode.TreeItemCollapsibleState.Collapsed),
-        new GitItem("Résolution de Conflits", "git-pull-request", "conflicts", "Aide pour résoudre les conflits", "easygit.openWebview", "conflicts"),     
       ];
     }
 
@@ -51,22 +56,20 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
   private async getBranches(): Promise<GitItem[]> {
     try {
       const gitInstance = await GitInstance.getInstance(this.repoPath);
+      if (!gitInstance) return [];
 
-      if(!gitInstance) {
-        return [];
-      }
-
-      const branches = gitInstance.getBranches();
+      const branches = await gitInstance.getAllBranches();
+      const currentBranch = await gitInstance.getCurrentBranch(); 
 
       return branches.map(branch => 
         new GitItem(
-          branch.name,
-          "folder",
+          `${branch.name === currentBranch ? "heads/" : ""}${branch.name}`,
+          branch.isRemote ? "cloud" : "folder",
           `branch_${branch.name}`,
           `Ouvrir la branche ${branch.name}`,
           "easygit.openWebview",
           "branches",
-          vscode.TreeItemCollapsibleState.Collapsed // Dossier pour les commits
+          vscode.TreeItemCollapsibleState.Collapsed
         )
       );
     } catch (error) {
@@ -79,18 +82,21 @@ export class EasyGitTreeProvider implements vscode.TreeDataProvider<GitItem> {
     try {
       const gitInstance = await GitInstance.getInstance(this.repoPath);
       if (!gitInstance) return [];
-  
+
       const commits = await gitInstance.getBranchCommits(branchName);
-      return commits.map(commit => 
-        new GitItem(
-          commit.hash.substring(0, 7) + " - " + commit.message,
+      const localCommits = await gitInstance.getCommitHistory(); // Commits locaux non poussés
+
+      return commits.map(commit => {
+        const isLocal = localCommits.some(localCommit => localCommit.hash === commit.hash);
+        return new GitItem(
+          `${commit.hash.substring(0, 7)} - ${commit.message} ${isLocal ? "" : ""}`,
           "file",
           `commit_${commit.hash}`,
           `Voir le commit ${commit.hash}`,
           "easygit.openWebview",
           commit.hash
-        )
-      );
+        );
+      });
     } catch (error) {
       console.error(`⚠ Erreur lors de la récupération des commits pour la branche ${branchName}:`, error);
       return [];

@@ -4,9 +4,12 @@ import * as branchHandler from '../commandsGit/branchHandler';
 import * as historyHandler from '../commandsGit/historyHandler';
 import * as stashHandler from '../commandsGit/stashHandler';
 import { Dirent, Dirent as fsDirent } from 'fs';
+import { runGitCommand } from './gitExecutor';
 
 class GitInstance {
   private static instance: GitInstance;
+  private _onDidChangeData: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
+  public readonly onDidChangeData: vscode.Event<void> = this._onDidChangeData.event;
   private repoPath: string;
   private userInfo: { name: string, email: string } | null = null;
   private status: string | null = null;
@@ -84,7 +87,6 @@ class GitInstance {
     return GitInstance.instance;
   }
 
-
   public async updateAll(): Promise<void> {
     try {
       this.isRepoInitialized = await this.checkIfRepoExists();
@@ -97,6 +99,7 @@ class GitInstance {
       await this.updateBranches();
       await this.updateCommitHistory();
       await this.updateStash();
+      this._onDidChangeData.fire();
     } catch (error) {
       console.error("Erreur lors de la mise à jour complète :", error);
     }
@@ -181,6 +184,30 @@ class GitInstance {
     }
   }
 
+  public async getAllBranches(): Promise<Array<{ name: string, isRemote: boolean }>> {
+    try {
+      const localBranches = await runGitCommand(`branch --format="%(refname:short)"`, this.repoPath);
+      const remoteBranches = await runGitCommand(`branch -r --format="%(refname:short)"`, this.repoPath);
+  
+      return [
+        ...localBranches.split("\n").map(branch => ({ name: branch.trim(), isRemote: false })),
+        ...remoteBranches.split("\n").map(branch => ({ name: branch.trim(), isRemote: true })),
+      ];
+    } catch (error) {
+      console.error("Erreur lors de la récupération des branches :", error);
+      return [];
+    }
+  }
+  
+  public async getCurrentBranch(): Promise<string> {
+    try {
+      return await runGitCommand(`rev-parse --abbrev-ref HEAD`, this.repoPath);
+    } catch (error) {
+      console.error("Erreur lors de la récupération du HEAD :", error);
+      return "unknown";
+    }
+  }
+  
   public getUserInfo() { return this.userInfo; }
   public getRepoStatus() { return this.status; }
   public getBranches() { return this.branches; }
