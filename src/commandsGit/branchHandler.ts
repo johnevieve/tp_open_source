@@ -45,3 +45,43 @@ export async function mergeRemoteBranch(repoPath: string, remoteRepo: string, br
 export async function deleteBranch(repoPath: string, branchName: string): Promise<string> {
   return runGitCommand(`branch -d ${branchName}`, repoPath);
 }
+
+/**
+ * Récupère toutes les branches (locales et distantes) et marque la branche actuelle (HEAD).
+ */
+export async function getAllBranches(repoPath: string): Promise<Array<{ name: string; isRemote: boolean; current: boolean }>> {
+  try {
+    const localBranches = await runGitCommand(`branch --format="%(refname:short)"`, repoPath);
+    const remoteBranches = await runGitCommand(`branch -r --format="%(refname:short)"`, repoPath);
+    const currentBranch = await getCurrentBranch(repoPath); // Récupère le HEAD
+
+    return [
+      ...localBranches.split("\n").map(branch => ({
+        name: branch.trim(),
+        isRemote: false,
+        current: branch.trim() === currentBranch, // Vérifie si c'est la branche active
+      })),
+      ...remoteBranches.split("\n").map(branch => ({
+        name: branch.trim(),
+        isRemote: true,
+        current: false, // Les branches distantes ne peuvent pas être HEAD localement
+      })),
+    ];
+  } catch (error) {
+    console.error("❌ Erreur lors de la récupération des branches :", error);
+    return [];
+  }
+}
+
+/**
+ * Récupère la branche actuelle (HEAD).
+ */
+export async function getCurrentBranch(repoPath: string): Promise<string> {
+  try {
+    return await runGitCommand(`rev-parse --abbrev-ref HEAD`, repoPath);
+  } catch (error) {
+    console.error("❌ Erreur lors de la récupération du HEAD :", error);
+    return "unknown";
+  }
+}
+

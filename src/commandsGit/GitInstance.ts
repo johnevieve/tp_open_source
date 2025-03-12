@@ -3,8 +3,8 @@ import * as gitCommands from '../commandsGit/gitCommands';
 import * as branchHandler from '../commandsGit/branchHandler';
 import * as historyHandler from '../commandsGit/historyHandler';
 import * as stashHandler from '../commandsGit/stashHandler';
-import { Dirent, Dirent as fsDirent } from 'fs';
-import { runGitCommand } from './gitExecutor';
+import * as fs from 'fs';
+import * as path from 'path';
 
 class GitInstance {
   private static instance: GitInstance;
@@ -16,29 +16,29 @@ class GitInstance {
   private branches: Array<{ name: string, current: boolean }> = [];
   private commitHistory: Array<{ hash: string, author: string, date: string, message: string }> = [];
   private stashList: Array<{ index: string, message: string }> = [];
-  private isRepoInitialized: boolean;
+  private isRepoInitialized: boolean = false;
 
   private constructor(repoPath: string) {
-    const fs = require('fs');
-    const path = require('path');
-
-    if (!fs.existsSync(path.join(repoPath, '.git'))) {
-      const possibleRepoPath = path.join(repoPath, path.basename(repoPath));
-      if (fs.existsSync(path.join(possibleRepoPath, '.git'))) {
-          repoPath = possibleRepoPath;
-      }
-  }
-
-  this.repoPath = repoPath;
-  this.isRepoInitialized = false;
+    this.repoPath = GitInstance.findGitRepoPath(repoPath);
   }
 
   public static async createInstance(repoPath: string): Promise<GitInstance> {
-    repoPath = this.findGitRepoPath(repoPath);
-
     const instance = new GitInstance(repoPath);
     instance.isRepoInitialized = await instance.checkIfRepoExists();
     return instance;
+  }
+
+  public static async getInstance(repoPath: string): Promise<GitInstance | null> {
+    const correctedPath = GitInstance.findGitRepoPath(repoPath);
+    if (!await gitCommands.isGitRepository(correctedPath)) {
+      return null;
+    }
+
+    if (!GitInstance.instance) {
+      GitInstance.instance = new GitInstance(correctedPath);
+      await GitInstance.instance.updateAll();
+    }
+    return GitInstance.instance;
   }
 
   private async checkIfRepoExists(): Promise<boolean> {
@@ -52,7 +52,7 @@ class GitInstance {
         this.isRepoInitialized = true;
         vscode.window.showInformationMessage('Dépôt Git initialisé avec succès.');
       } catch (error) {
-        vscode.window.showErrorMessage('Erreur lors de l\'initialisation du dépôt : ' + error);
+        vscode.window.showErrorMessage(`Erreur lors de l'initialisation du dépôt : ${error}`);
       }
     } else {
       vscode.window.showInformationMessage('Un dépôt Git existe déjà.');
@@ -66,33 +66,17 @@ class GitInstance {
         this.isRepoInitialized = true;
         vscode.window.showInformationMessage('Dépôt cloné avec succès.');
       } catch (error) {
-        vscode.window.showErrorMessage('Erreur lors du clonage du dépôt : ' + error);
+        vscode.window.showErrorMessage(`Erreur lors du clonage du dépôt : ${error}`);
       }
     } else {
       vscode.window.showInformationMessage('Un dépôt Git est déjà présent.');
     }
   }
 
-  public static async getInstance(repoPath: string): Promise<GitInstance | null> {
-    const correctedPath = GitInstance.findGitRepoPath(repoPath);
-
-    if (!await gitCommands.isGitRepository(correctedPath)) {
-        return null;
-    }
-
-    if (!GitInstance.instance) {
-        GitInstance.instance = new GitInstance(correctedPath);
-        await GitInstance.instance.updateAll();
-    }
-    return GitInstance.instance;
-  }
-
   public async updateAll(): Promise<void> {
     try {
       this.isRepoInitialized = await this.checkIfRepoExists();
-      if (!this.isRepoInitialized) {
-        return;
-      }
+      if (!this.isRepoInitialized) return;
 
       await this.updateUserInfo();
       await this.updateRepoStatus();
@@ -124,9 +108,9 @@ class GitInstance {
     }
   }
 
-  public async updateBranches(): Promise<void> { 
+  public async updateBranches(): Promise<void> {
     try {
-      this.branches = await branchHandler.listBranches(this.repoPath);
+      this.branches = await branchHandler.getAllBranches(this.repoPath);
     } catch (error) {
       console.error("Erreur lors de la mise à jour des branches :", error);
     }
@@ -149,65 +133,42 @@ class GitInstance {
   }
 
   public static findGitRepoPath(basePath: string): string {
-    const fs = require('fs');
-    const path = require('path');
-
+    
     if (fs.existsSync(path.join(basePath, '.git'))) {
-        return basePath;
+      return basePath;
     }
 
     const queue = [basePath];
     while (queue.length > 0) {
-        const currentPath = queue.shift();
-        if (!currentPath) continue;
+      const currentPath = queue.shift();
+      if (!currentPath) continue;
 
-                            const subfolders = fs.readdirSync(currentPath, { withFileTypes: true })
-                                                .filter((dirent: Dirent) => dirent.isDirectory())
-                                                .map((dirent: Dirent) => path.join(currentPath, dirent.name));
+      const subfolders = fs.readdirSync(currentPath, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory())
+        .map((dirent: fs.Dirent) => path.join(currentPath, dirent.name));
 
-        for (const folder of subfolders) {
-            if (fs.existsSync(path.join(folder, '.git'))) {
-                return folder;
-            }
-            queue.push(folder);
+      for (const folder of subfolders) {
+        if (fs.existsSync(path.join(folder, '.git'))) {
+          return folder;
         }
+        queue.push(folder);
+      }
     }
     return basePath;
   }
 
-  public async getBranchCommits(branchName: string): Promise<Array<{ hash: string, author: string, date: string, message: string }>> {
-    try {
-      return await historyHandler.getBranchCommits(this.repoPath, branchName);
-    } catch (error) {
-      console.error(`⚠ Erreur lors de la récupération des commits pour la branche ${branchName}:`, error);
-      return [];
-    }
+  public async getBranchCommits(branchName: string) {
+    return await historyHandler.getBranchCommits(this.repoPath, branchName);
   }
 
-  public async getAllBranches(): Promise<Array<{ name: string, isRemote: boolean }>> {
-    try {
-      const localBranches = await runGitCommand(`branch --format="%(refname:short)"`, this.repoPath);
-      const remoteBranches = await runGitCommand(`branch -r --format="%(refname:short)"`, this.repoPath);
-  
-      return [
-        ...localBranches.split("\n").map(branch => ({ name: branch.trim(), isRemote: false })),
-        ...remoteBranches.split("\n").map(branch => ({ name: branch.trim(), isRemote: true })),
-      ];
-    } catch (error) {
-      console.error("Erreur lors de la récupération des branches :", error);
-      return [];
-    }
+  public async getAllBranches() {
+    return await branchHandler.getAllBranches(this.repoPath);
   }
-  
-  public async getCurrentBranch(): Promise<string> {
-    try {
-      return await runGitCommand(`rev-parse --abbrev-ref HEAD`, this.repoPath);
-    } catch (error) {
-      console.error("Erreur lors de la récupération du HEAD :", error);
-      return "unknown";
-    }
+
+  public async getCurrentBranch() {
+    return await branchHandler.getCurrentBranch(this.repoPath);
   }
-  
+
   public getUserInfo() { return this.userInfo; }
   public getRepoStatus() { return this.status; }
   public getBranches() { return this.branches; }
