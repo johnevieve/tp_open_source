@@ -12,11 +12,12 @@ import * as gitCommands from '../commandsGit/gitCommands';
 export class EasyGitWebview {
   private static panel: vscode.WebviewPanel | null = null;
 
-  public static async showWebview(context: vscode.ExtensionContext, section: string) {
+  public static async showWebview(context: vscode.ExtensionContext, section: string, extraData: any = {}) {
     const repoPath = vscode.workspace.rootPath || '';
+    vscode.commands.executeCommand('easygit.refreshTree');
 
     if (EasyGitWebview.panel) {
-      await EasyGitWebview.updateWebview(section, repoPath);
+      await EasyGitWebview.updateWebview(section, repoPath, extraData);
     } else {
       EasyGitWebview.panel = vscode.window.createWebviewPanel(
         'easyGitWebview',
@@ -25,8 +26,7 @@ export class EasyGitWebview {
         { enableScripts: true }
       );
 
-      await EasyGitWebview.updateWebview(section, repoPath);
-
+      await EasyGitWebview.updateWebview(section, repoPath, extraData);
       EasyGitWebview.panel.onDidDispose(() => {
         EasyGitWebview.panel = null;
       });
@@ -80,12 +80,13 @@ export class EasyGitWebview {
     }
   }
 
-  private static async updateWebview(section: string, repoPath: string) {
+  private static async updateWebview(section: string, repoPath: string, extraData: any = {}) {
     if (!EasyGitWebview.panel) return;
+    vscode.commands.executeCommand('easygit.refreshTree');
 
     try {
       EasyGitWebview.panel.title = EasyGitWebview.getWebviewTitle(section);
-      EasyGitWebview.panel.webview.html = await EasyGitWebview.getWebviewContent(section, repoPath);
+      EasyGitWebview.panel.webview.html = await EasyGitWebview.getWebviewContent(section, repoPath, extraData);
     } catch (error) {
       console.error(`⚠ Erreur lors de la mise à jour de la Webview (${section}):`, error);
       EasyGitWebview.panel.webview.html = `
@@ -108,14 +109,14 @@ export class EasyGitWebview {
     return titles[section] || "EasyGit";
   }
 
-  private static async getSectionContent(section: string, repoPath: string): Promise<string> {
+  private static async getSectionContent(section: string, repoPath: string, extraData: any = {}): Promise<string> {
     try {
       switch (section) {
         case "home": return renderHome();
         case "connection": return await renderConnection(repoPath);
         case "branches": return renderBranches();
-        case "commit": return renderCommit();
-        case "commits": return renderCommits();
+        case "commit": return renderCommit(extraData);
+        case "commits": return renderCommits(extraData);
         case "conflicts": return renderConflicts();
         case "actions": return renderActions();
         default: return `<h2>Bienvenue sur EasyGit</h2><p>Sélectionnez une section à gauche.</p>`;
@@ -129,8 +130,8 @@ export class EasyGitWebview {
     }
   }
 
-  private static async getWebviewContent(section: string, repoPath: string): Promise<string> {
-    const content = await EasyGitWebview.getSectionContent(section, repoPath);
+  private static async getWebviewContent(section: string, repoPath: string, extraData: any): Promise<string> {
+    const content = await EasyGitWebview.getSectionContent(section, repoPath, extraData);
     return `
       <!DOCTYPE html>
       <html lang="fr">

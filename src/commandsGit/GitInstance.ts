@@ -42,6 +42,7 @@ class GitInstance {
   }
 
   private async checkIfRepoExists(): Promise<boolean> {
+    
     return await gitCommands.isGitRepository(this.repoPath);
   }
 
