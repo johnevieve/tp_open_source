@@ -104,7 +104,6 @@ export class EasyGitWebview {
       commit: "Commit",
       commits: "Commits",
       conflicts: "Conflits",
-      actions: "Actions"
     };
     return titles[section] || "EasyGit";
   }
@@ -118,7 +117,6 @@ export class EasyGitWebview {
         case "commit": return renderCommit(extraData);
         case "commits": return renderCommits(extraData);
         case "conflicts": return renderConflicts();
-        case "actions": return renderActions();
         default: return `<h2>Bienvenue sur EasyGit</h2><p>Sélectionnez une section à gauche.</p>`;
       }
     } catch (error) {
